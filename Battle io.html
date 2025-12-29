@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>NEO-CRISIS PRO 2025</title>
+    <style>
+        /* 1. FORCE MOBILE STABILITY */
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; -webkit-user-select: none; }
+        body { background: #000; overflow: hidden; height: 100vh; width: 100vw; position: fixed; font-family: sans-serif; }
+        
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+        /* 2. MODERN HUD */
+        #hud { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; color: #00f2ff; font-weight: 900; pointer-events: none; z-index: 10; font-size: 18px; text-shadow: 0 0 10px #00f2ff; }
+        
+        /* 3. STABLE DYNAMIC JOYSTICKS */
+        .joy-container { position: absolute; width: 100px; height: 100px; border: 2px solid rgba(0,242,255,0.3); border-radius: 50%; background: rgba(0,0,0,0.3); display: none; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; }
+        .joy-knob { position: absolute; width: 40px; height: 40px; background: #fff; border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 15px #fff; }
+
+        #overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 100; }
+        .btn { background: #00f2ff; color: #000; padding: 20px 60px; border: none; border-radius: 50px; font-weight: bold; font-size: 20px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <div>WAVE: <span id="wave">1</span></div>
+        <div>KILLS: <span id="kills">0</span></div>
+    </div>
+
+    <div id="left-joy" class="joy-container"><div class="joy-knob"></div></div>
+    <div id="right-joy" class="joy-container"><div class="joy-knob" style="background:#ff0055; box-shadow:0 0 15px #ff0055;"></div></div>
+
+    <div id="overlay">
+        <h1 style="color:#00f2ff; margin-bottom: 20px;">NEO-CRISIS PRO</h1>
+        <button class="btn" onclick="start()">START ENGINE</button>
+    </div>
+
+    <canvas id="game"></canvas>
+
+<script>
+/** 2025 ANDROID OPTIMIZED ENGINE **/
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+let w, h, dpr = window.devicePixelRatio || 1;
+let active = false, score = 0, wave = 1;
+
+// Scaling Logic
+function resize() {
+    w = window.innerWidth; h = window.innerHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Player & Object Systems
+let player = { x: 0, y: 0, mx: 0, my: 0, ax: 0, ay: 0, ang: 0, fire: false };
+let bullets = [], enemies = [], lastShot = 0;
+
+// POINTER TRACKING (Fixes "Not Working" Android controls)
+let pointers = { left: null, right: null };
+
+window.addEventListener('pointerdown', (e) => {
+    if(!active) return;
+    if(e.clientX < w/2 && !pointers.left) {
+        pointers.left = { id: e.pointerId, startX: e.clientX, startY: e.clientY };
+        showJoy('left-joy', e.clientX, e.clientY);
+    } else if(e.clientX >= w/2 && !pointers.right) {
+        pointers.right = { id: e.pointerId, startX: e.clientX, startY: e.clientY };
+        showJoy('right-joy', e.clientX, e.clientY);
+    }
+});
+
+window.addEventListener('pointermove', (e) => {
+    if(pointers.left && e.pointerId === pointers.left.id) {
+        let dx = e.clientX - pointers.left.startX, dy = e.clientY - pointers.left.startY;
+        let dist = Math.min(40, Math.hypot(dx, dy)), ang = Math.atan2(dy, dx);
+        player.mx = (Math.cos(ang) * dist) / 40; player.my = (Math.sin(ang) * dist) / 40;
+        moveKnob('left-joy', Math.cos(ang)*dist, Math.sin(ang)*dist);
+    }
+    if(pointers.right && e.pointerId === pointers.right.id) {
+        let dx = e.clientX - pointers.right.startX, dy = e.clientY - pointers.right.startY;
+        let dist = Math.min(40, Math.hypot(dx, dy)), ang = Math.atan2(dy, dx);
+        player.ang = ang; player.fire = dist > 10;
+        moveKnob('right-joy', Math.cos(ang)*dist, Math.sin(ang)*dist);
+    }
+});
+
+window.addEventListener('pointerup', (e) => {
+    if(pointers.left && e.pointerId === pointers.left.id) { pointers.left = null; player.mx = player.my = 0; hideJoy('left-joy'); }
+    if(pointers.right && e.pointerId === pointers.right.id) { pointers.right = null; player.fire = false; hideJoy('right-joy'); }
+});
+
+function showJoy(id, x, y) { let el = document.getElementById(id); el.style.display='block'; el.style.left=x+'px'; el.style.top=y+'px'; }
+function hideJoy(id) { document.getElementById(id).style.display='none'; }
+function moveKnob(id, x, y) { document.querySelector(`#${id} .joy-knob`).style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`; }
+
+function start() {
+    active = true; score = 0; wave = 1;
+    enemies = []; bullets = [];
+    player.x = w/2; player.y = h/2;
+    document.getElementById('overlay').style.display = 'none';
+}
+
+function update() {
+    if(!active) return;
+    player.x += player.mx * 5; player.y += player.my * 5;
+    player.x = Math.max(20, Math.min(w-20, player.x));
+    player.y = Math.max(20, Math.min(h-20, player.y));
+
+    if(player.fire && Date.now() - lastShot > 150) {
+        bullets.push({ x: player.x, y: player.y, vx: Math.cos(player.ang)*12, vy: Math.sin(player.ang)*12 });
+        lastShot = Date.now();
+        if(navigator.vibrate) navigator.vibrate(10);
+    }
+
+    bullets.forEach((b, i) => {
+        b.x += b.vx; b.y += b.vy;
+        if(b.x<0||b.x>w||b.y<0||b.y>h) bullets.splice(i, 1);
+    });
+
+    if(Math.random() < 0.02 + (wave*0.005)) {
+        enemies.push({ x: Math.random()*w, y: -20, hp: wave, s: 1.5 + (wave*0.1) });
+    }
+
+    enemies.forEach((e, i) => {
+        let a = Math.atan2(player.y - e.y, player.x - e.x);
+        e.x += Math.cos(a)*e.s; e.y += Math.sin(a)*e.s;
+        
+        bullets.forEach((b, bi) => {
+            if(Math.hypot(e.x-b.x, e.y-b.y) < 20) {
+                e.hp--; bullets.splice(bi, 1);
+                if(e.hp<=0) { enemies.splice(i, 1); score++; if(score%10===0) wave++; }
+                document.getElementById('kills').innerText = score;
+                document.getElementById('wave').innerText = wave;
+            }
+        });
+
+        if(Math.hypot(e.x-player.x, e.y-player.y) < 30) {
+            active = false; document.getElementById('overlay').style.display='flex';
+        }
+    });
+}
+
+function draw() {
+    ctx.fillStyle = '#010409';
+    ctx.fillRect(0, 0, w, h);
+
+    if(active) {
+        // Bullets
+        ctx.fillStyle = '#fff';
+        bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 4, 4));
+
+        // Player
+        ctx.fillStyle = '#00f2ff';
+        ctx.beginPath(); ctx.arc(player.x, player.y, 20, 0, Math.PI*2); ctx.fill();
+
+        // Enemies
+        ctx.fillStyle = '#ff0055';
+        enemies.forEach(e => { ctx.beginPath(); ctx.arc(e.x, e.y, 18, 0, Math.PI*2); ctx.fill(); });
+    }
+    update();
+    requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
